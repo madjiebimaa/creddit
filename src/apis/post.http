@@ -1,0 +1,29 @@
+@hostname = localhost
+@port = 4000
+@host = {{hostname}}:{{port}}
+@url = http://{{host}}
+
+### Get all posts
+GET {{url}}/api/posts
+
+### Get post by ID 
+GET {{url}}/api/posts/1
+
+### Create a post
+POST {{url}}/api/posts
+Content-Type: application/json
+
+{
+    "title": "hello bunga"
+}
+
+### Update a post by ID
+PATCH  {{url}}/api/posts/3
+Content-Type: application/json
+
+{
+    "title": "hello sakha"
+}
+
+### Delete a post by ID
+DELETE {{url}}/api/posts/3
