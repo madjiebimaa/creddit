@@ -1,16 +1,16 @@
 @hostname = localhost
 @port = 4000
 @host = {{hostname}}:{{port}}
-@url = http://{{host}}
+@url = http://{{host}}/api/posts
 
 ### Get all posts
-GET {{url}}/api/posts
+GET {{url}} HTTP/1.1
 
 ### Get post by ID 
-GET {{url}}/api/posts/1
+GET {{url}}/1 HTTP/1.1
 
 ### Create a post
-POST {{url}}/api/posts
+POST {{url}} HTTP/1.1
 Content-Type: application/json
 
 {
@@ -18,7 +18,7 @@ Content-Type: application/json
 }
 
 ### Update a post by ID
-PATCH  {{url}}/api/posts/3
+PATCH  {{url}}/3 HTTP/1.1
 Content-Type: application/json
 
 {
@@ -26,4 +26,4 @@ Content-Type: application/json
 }
 
 ### Delete a post by ID
-DELETE {{url}}/api/posts/3
+DELETE {{url}}/3 HTTP/1.1
