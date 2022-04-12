@@ -1,11 +1,23 @@
+require("dotenv").config();
+
 import { MikroORM } from "@mikro-orm/core";
 import bcrypt from "bcrypt";
 import bodyParser from "body-parser";
+import connectRedis from "connect-redis";
 import express from "express";
+import session from "express-session";
 import { StatusCodes } from "http-status-codes";
+import { createClient } from "redis";
+import { __prod__ } from "./constants";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
 import mikroOrmConfig from "./mikro-orm.config";
+
+declare module "express-session" {
+  export interface SessionData {
+    userId: number;
+  }
+}
 
 const main = async () => {
   const orm = await MikroORM.init(mikroOrmConfig);
@@ -13,8 +25,32 @@ const main = async () => {
 
   const app = express();
 
+  const RedisStore = connectRedis(session);
+  let redisClient = createClient({ legacyMode: true });
+
+  // there's unexpected behavior (internal server error) when this code removed
+  redisClient.connect().catch((err) => console.log(err));
+
   app.use(bodyParser.urlencoded({ extended: false }));
   app.use(bodyParser.json());
+  app.use(
+    session({
+      name: process.env.SESSION_NAME,
+      store: new RedisStore({
+        client: redisClient as any,
+        disableTouch: true,
+      }),
+      cookie: {
+        maxAge: 1000 * 60 * 24 * 365 * 10, // 10 years
+        httpOnly: true,
+        sameSite: "lax", // csrf
+        secure: __prod__, // cookie only works in https
+      },
+      secret: process.env.SESSION_SECRET_KEY!,
+      saveUninitialized: false,
+      resave: false,
+    })
+  );
 
   app.get("/", (_, res) => {
     res.send("Hello world");
@@ -79,7 +115,7 @@ const main = async () => {
 
   app.post("/api/users/register", async (req, res) => {
     const { username, email, password } = req.body;
-    if (username.length <= 5) {
+    if (username.length < 5) {
       return res.status(StatusCodes.BAD_REQUEST).json({
         error: {
           field: "username",
@@ -88,7 +124,7 @@ const main = async () => {
       });
     }
 
-    if (password.length <= 5) {
+    if (password.length < 5) {
       return res.status(StatusCodes.BAD_REQUEST).json({
         error: {
           field: "password",
@@ -104,9 +140,19 @@ const main = async () => {
       password: hashedPassword,
     });
 
-    // try and catch to handle an not unique username or email
-    // with condition err code (23505) or detail (already exists)
-    await orm.em.persistAndFlush(user);
+    try {
+      await orm.em.persistAndFlush(user);
+    } catch (err) {
+      // err code 23505 means column value already exists
+      if (err.code === "23505") {
+        return res.status(StatusCodes.BAD_REQUEST).json({
+          error: {
+            field: "username or email",
+            message: "the username or email is already exists",
+          },
+        });
+      }
+    }
 
     const { id, createdAt, updatedAt } = user;
     return res
@@ -137,6 +183,23 @@ const main = async () => {
     }
 
     const { id, email, createdAt, updatedAt } = user;
+    req.session.userId = id;
+
+    return res
+      .status(StatusCodes.ACCEPTED)
+      .json({ id, username, email, createdAt, updatedAt });
+  });
+
+  app.get("/api/users", async (req, res) => {
+    const { userId } = req.session;
+    if (!userId) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+        message: "you are not logged in",
+      });
+    }
+
+    const user = await orm.em.findOne(User, { id: userId });
+    const { id, username, email, createdAt, updatedAt } = user!;
     return res
       .status(StatusCodes.ACCEPTED)
       .json({ id, username, email, createdAt, updatedAt });
