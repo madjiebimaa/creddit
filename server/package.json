@@ -6,9 +6,9 @@
   "scripts": {
     "watch": "tsc -w",
     "start": "ts-node src/index.ts",
-    "start-node": "node dist/index.js",
+    "start:node": "node dist/index.js",
     "dev": "nodemon --exec ts-node src/index.ts",
-    "dev-node": "nodemon dist/index.js",
+    "dev:node": "nodemon dist/index.js",
     "create:migration": "mikro-orm migration:create"
   },
   "keywords": [],
