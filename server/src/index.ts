@@ -1,14 +1,16 @@
 require("dotenv").config();
 
 import { MikroORM } from "@mikro-orm/core";
+import { EntityManager } from "@mikro-orm/postgresql";
 import bcrypt from "bcrypt";
 import bodyParser from "body-parser";
 import connectRedis from "connect-redis";
+import cors from "cors";
 import express from "express";
 import session from "express-session";
 import { StatusCodes } from "http-status-codes";
 import { createClient } from "redis";
-import { __prod__ } from "./constants";
+import { COOKIE_NAME, __prod__ } from "./constants";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
 import mikroOrmConfig from "./mikro-orm.config";
@@ -31,11 +33,17 @@ const main = async () => {
   // there's unexpected behavior (internal server error) when this code removed
   redisClient.connect().catch((err) => console.log(err));
 
+  app.use(
+    cors({
+      origin: "http://localhost:3000",
+      credentials: true,
+    })
+  );
   app.use(bodyParser.urlencoded({ extended: false }));
   app.use(bodyParser.json());
   app.use(
     session({
-      name: process.env.SESSION_NAME,
+      name: COOKIE_NAME,
       store: new RedisStore({
         client: redisClient as any,
         disableTouch: true,
@@ -134,14 +142,21 @@ const main = async () => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const user = orm.em.create(User, {
-      username,
-      email,
-      password: hashedPassword,
-    });
-
+    let user;
     try {
-      await orm.em.persistAndFlush(user);
+      // await orm.em.persistAndFlush(user);
+      const result = await (orm.em as EntityManager)
+        .createQueryBuilder(User)
+        .getKnexQuery()
+        .insert({
+          username,
+          email,
+          password: hashedPassword,
+          created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .returning("*");
+      user = result[0];
     } catch (err) {
       // err code 23505 means column value already exists
       if (err.code === "23505") {
@@ -188,6 +203,27 @@ const main = async () => {
     return res
       .status(StatusCodes.ACCEPTED)
       .json({ id, username, email, createdAt, updatedAt });
+  });
+
+  app.post("/api/users/logout", (req, res) => {
+    return new Promise((resolve) =>
+      req.session.destroy((err) => {
+        res.clearCookie(COOKIE_NAME);
+        if (err) {
+          console.log(err);
+
+          res
+            .status(StatusCodes.INTERNAL_SERVER_ERROR)
+            .json({ message: "failed to destroy the cookie" });
+          return resolve(err);
+        }
+
+        res
+          .status(StatusCodes.ACCEPTED)
+          .json({ message: "success to destroy the cookie" });
+        resolve(true);
+      })
+    );
   });
 
   app.get("/api/users", async (req, res) => {

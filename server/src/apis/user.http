@@ -22,5 +22,8 @@ Content-Type: application/json
     "password": "sakha"
 }
 
+### Logout an user
+POST {{url}}/logout HTTP/1.1
+
 ### Me 
 GET {{url}} HTTP/1.1
