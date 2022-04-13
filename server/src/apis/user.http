@@ -25,5 +25,13 @@ Content-Type: application/json
 ### Logout an user
 POST {{url}}/logout HTTP/1.1
 
+### Forget password an user
+GET {{url}}/forget-password HTTP/1.1
+Content-Type: application/json
+
+{
+    "email": "sakha@gmail.com"
+}
+
 ### Me 
 GET {{url}} HTTP/1.1

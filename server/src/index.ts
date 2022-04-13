@@ -9,12 +9,13 @@ import cors from "cors";
 import express from "express";
 import session from "express-session";
 import { StatusCodes } from "http-status-codes";
-import { createClient } from "redis";
-import { COOKIE_NAME, __prod__ } from "./constants";
+import Redis from "ioredis";
+import { v4 } from "uuid";
+import { COOKIE_NAME, FORGET_PASSWORD_PREFIX, __prod__ } from "./constants";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
 import mikroOrmConfig from "./mikro-orm.config";
-
+import { sendEmail } from "./utils/sendEmail";
 declare module "express-session" {
   export interface SessionData {
     userId: number;
@@ -28,10 +29,10 @@ const main = async () => {
   const app = express();
 
   const RedisStore = connectRedis(session);
-  let redisClient = createClient({ legacyMode: true });
+  const redis = new Redis();
 
   // there's unexpected behavior (internal server error) when this code removed
-  redisClient.connect().catch((err) => console.log(err));
+  // redis.connect().catch((err) => console.log(err));
 
   app.use(
     cors({
@@ -45,7 +46,7 @@ const main = async () => {
     session({
       name: COOKIE_NAME,
       store: new RedisStore({
-        client: redisClient as any,
+        client: redis as any,
         disableTouch: true,
       }),
       cookie: {
@@ -225,6 +226,34 @@ const main = async () => {
       })
     );
   });
+
+  app.get("/api/users/forget-password", async (req, res) => {
+    const user = await orm.em.findOne(User, { email: req.body.email });
+    if (!user) {
+      return res.status(StatusCodes.NOT_FOUND).json({
+        message: "there's no user with that email",
+      });
+    }
+
+    const token = v4();
+    await redis.set(
+      FORGET_PASSWORD_PREFIX + token,
+      user.id,
+      "EX",
+      1000 * 60 * 60 * 24 * 3 // 3 days
+    );
+
+    sendEmail(
+      user.email,
+      `<a href='http://localhost:3000/change-password/${token}'>Reset Password</a>`
+    );
+
+    return res.status(StatusCodes.ACCEPTED).json({
+      message: "the link to change password already sent to the email",
+    });
+  });
+
+  // app.post("/api/users/change-password", async (req, res) => {});
 
   app.get("/api/users", async (req, res) => {
     const { userId } = req.session;
